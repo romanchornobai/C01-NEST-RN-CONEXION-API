@@ -1,0 +1,332 @@
+================================================================================
+GUIA RAPIDA PARA EXAMEN: NESTJS + REACT NATIVE + GIT
+================================================================================
+
+
+================================================================================
+1. COMANDOS DE GIT (EN GIT BASH)
+================================================================================
+
+--- CONFIGURACION INICIAL (SOLO LA PRIMERA VEZ) ---
+git config --global user.name "TuNombre"
+git config --global user.email "tuemail@ejemplo.com"
+
+--- INICIAR REPOSITORIO LOCAL ---
+git init
+git branch -M main
+
+--- CONECTAR CON REPOSITORIO REMOTO (GITHUB) ---
+git remote add origin https://github.com/usuario/repo.git
+git remote -v
+
+--- FLUJO DE TRABAJO HABITUAL (GUARDAR Y SUBIR CAMBIOS) ---
+git status
+git add .
+git commit -m "Mensaje descriptivo del commit"
+git push -u origin main
+(En siguientes pushes basta con: git push)
+
+--- CLONAR Y ACTUALIZAR ---
+git clone https://github.com/usuario/repo.git
+git pull origin main
+
+--- DESHACER CAMBIOS / DESCARTAR ---
+git checkout -- archivo.ts
+git reset HEAD archivo.ts
+
+--- ATENCION CON REPOSITORIOS ANIDADOS (.GIT INTERNOS) ---
+Al crear proyectos con "nest new" o "create-expo-app", a veces crean su propio .git.
+Para evitar que Git los considere submódulos rotos, bórralos desde Git Bash:
+rm -rf backend/.git
+rm -rf frontend/.git
+
+
+================================================================================
+2. INSTALACION DE ENTORNO Y COMANDOS DE CREACION
+================================================================================
+
+--- COMPROBAR VERSIONES ---
+node -v
+npm -v
+
+--- INSTALAR NESTJS CLI DE FORMA GLOBAL ---
+npm install -g @nestjs/cli
+
+--- CREAR PROYECTO BACKEND (NESTJS) ---
+nest new backend --skip-git --package-manager npm
+cd backend
+npm run start:dev
+(El backend corre por defecto en http://localhost:3000)
+
+--- CREAR PROYECTO FRONTEND (REACT NATIVE CON EXPO + TYPESCRIPT) ---
+npx create-expo-app@latest frontend --template blank-typescript -y
+cd frontend
+npx expo start
+(o: npm start)
+(Pulsar 'w' para abrir en navegador web o escanear QR con Expo Go en móvil)
+
+
+================================================================================
+3. BACKEND: NESTJS (PATRONES ESENCIALES)
+================================================================================
+
+--- ACTIVAR CORS EN main.ts (OBLIGATORIO PARA CONECTAR DESDE EL MOVIL) ---
+Ubicacion: src/main.ts
+
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  app.enableCors(); // <--- PERMITE PETICIONES DESDE REACT NATIVE
+  await app.listen(3000);
+}
+bootstrap();
+
+
+--- SEPARACION CONTROLLER Y SERVICE ---
+- Controller: Gestiona la ruta HTTP (@Get, @Post, @Patch), recibe parámetros y delega.
+- Service: Gestiona los datos (arrays en memoria), filtros y lógica de negocio.
+
+--- INYECCION DE DEPENDENCIAS EN EL CONTROLLER ---
+constructor(private readonly productosService: ProductosService) {}
+
+
+--- DECORADORES Y METODOS HTTP ---
+
+1) GET SIMPLE (LISTAR TODO)
+Controller:
+  @Get()
+  findAll() {
+    return this.servicio.findAll();
+  }
+
+2) GET CON PARAMETRO DE RUTA (BUSCAR POR ID)
+Ruta: GET /recurso/:id
+Controller:
+  @Get(':id')
+  findOne(@Param('id') id: string) {
+    return this.servicio.findOne(Number(id)); // Convertir a Number si el ID es numérico
+  }
+Service:
+  findOne(id: number) {
+    return this.lista.find(item => item.id === id);
+  }
+
+3) GET CON QUERY PARAMS (FILTRAR)
+Ruta: GET /recurso?genero=accion
+Controller:
+  @Get()
+  findAll(@Query('genero') genero?: string) {
+    if (genero) {
+      return this.servicio.findByGenero(genero);
+    }
+    return this.servicio.findAll();
+  }
+Service:
+  findByGenero(genero: string) {
+    return this.lista.filter(item => item.genero.toLowerCase() === genero.toLowerCase());
+  }
+
+4) PATCH (MODIFICAR PARTE DE UN RECURSO, EJ: LIKES)
+Ruta: PATCH /recurso/:id/like
+Controller:
+  @Patch(':id/like')
+  darLike(@Param('id') id: string) {
+    return this.servicio.incrementarLike(Number(id));
+  }
+Service:
+  incrementarLike(id: number) {
+    const item = this.lista.find(x => x.id === id);
+    if (item) {
+      item.likes = (item.likes || 0) + 1;
+    }
+    return item;
+  }
+
+5) POST (CREAR NUEVO RECURSO CON CUERPO JSON)
+Ruta: POST /recurso
+Controller:
+  @Post()
+  crear(@Body() body: { nombre: string; precio: number }) {
+    return this.servicio.crear(body);
+  }
+Service:
+  crear(dto: { nombre: string; precio: number }) {
+    const nuevo = {
+      id: this.lista.length + 1,
+      ...dto
+    };
+    this.lista.push(nuevo);
+    return nuevo;
+  }
+
+
+================================================================================
+4. FRONTEND: REACT NATIVE CON EXPO (PATRONES ESENCIALES)
+================================================================================
+
+--- DIRECCION IP DEL BACKEND (REGLA DE ORO) ---
+En React Native NO uses "localhost" si pruebas en móvil físico o emulador.
+Usa la IP local de tu ordenador:
+const API_URL = 'http://192.168.1.XXX:3000';
+(Para ver tu IP en Windows: ipconfig en la terminal)
+
+
+--- PETICIONES CON fetch() ---
+
+1) PETICION GET:
+const res = await fetch(`${API_URL}/productos`);
+const data = await res.json();
+
+2) PETICION GET DINAMICA POR ID:
+const res = await fetch(`${API_URL}/heroes/${id}`);
+if (!res.ok) {
+  // Manejo de error si no existe (404)
+}
+const data = await res.json();
+
+3) PETICION PATCH:
+const res = await fetch(`${API_URL}/mascotas/${id}/like`, {
+  method: 'PATCH',
+});
+const data = await res.json();
+
+4) PETICION POST (ENVIAR DATOS JSON):
+const res = await fetch(`${API_URL}/productos`, {
+  method: 'POST',
+  headers: {
+    'Content-Type': 'application/json',
+  },
+  body: JSON.stringify({
+    nombre: nombreInput,
+    precio: Number(precioInput),
+  }),
+});
+const nuevoProducto = await res.json();
+
+
+--- HOOKS DE REACT ---
+
+1) useState: Guardar estado y actualizar la vista
+const [items, setItems] = useState<any[]>([]);
+const [cargando, setCargando] = useState<boolean>(false);
+const [texto, setTexto] = useState<string>('');
+
+2) useEffect: Cargar datos automaticamente al entrar a la pantalla
+useEffect(() => {
+  cargarDatos();
+}, []); // Array vacio = se ejecuta una sola vez al montar el componente
+
+
+--- COMPONENTES DE INTERFAZ FUNDAMENTALES ---
+
+1) FlatList (Para listas eficientes de arrays):
+<FlatList
+  data={items}
+  keyExtractor={(item) => item.id.toString()}
+  renderItem={({ item }) => (
+    <View style={styles.card}>
+      <Text style={styles.titulo}>{item.nombre}</Text>
+      <Text>{item.precio} €</Text>
+    </View>
+  )}
+/>
+
+2) TextInput (Para capturar texto del usuario):
+<TextInput
+  value={texto}
+  onChangeText={setTexto}
+  placeholder="Escribe el ID..."
+  keyboardType="numeric"
+  style={styles.input}
+/>
+
+3) Button / TouchableOpacity:
+<Button title="Buscar" onPress={buscarItem} />
+
+
+================================================================================
+5. CHULETA EXPRESS: QUE SE HIZO EN CADA EJERCICIO (01 AL 12)
+================================================================================
+
+EJERCICIO 01 (Hello Backend):
+- Creación de un endpoint básico con NestJS.
+- Decorador @Controller('hola') y @Get() devolviendo un objeto JSON { mensaje: '...' }.
+
+EJERCICIO 02 (API de pizzas):
+- Separación de responsabilidades: PizzasController + PizzasService.
+- El servicio tiene un array en memoria con objetos (id, nombre, ingredientes, precio).
+- Inyección del Service en el constructor del Controller.
+
+EJERCICIO 03 (Busca mascota):
+- Parámetros de ruta en NestJS: @Get(':id') con @Param('id') id: string.
+- Conversión a número con Number(id) y búsqueda con array.find().
+
+EJERCICIO 04 (Filtra videojuegos):
+- Parámetros de consulta (Query Params): @Get() con @Query('genero') genero: string.
+- Filtrado con array.filter() por categoría o género opcional.
+
+EJERCICIO 05 (Mi primera conexion):
+- Primera llamada HTTP desde React Native hacia NestJS mediante fetch().
+- Requisito clave: app.enableCors() en backend main.ts.
+- Uso de IP local en lugar de localhost en la URL de fetch().
+
+EJERCICIO 06 (Estado de conexion):
+- Introducción de useState en React Native para almacenar la respuesta de la API.
+- Actualización dinámica del texto en pantalla tras pulsar un botón.
+
+EJERCICIO 07 (Carga automatica):
+- Uso de useEffect(() => { cargar(); }, []) para llamar a la API al abrir la app.
+- Añadir botón de "Recargar" para volver a ejecutar la petición a demanda.
+
+EJERCICIO 08 (Menu del restaurante):
+- El backend devuelve un array de productos.
+- El frontend usa FlatList para pintar tarjetas de productos de manera estructurada.
+
+EJERCICIO 09 (Busca superheroe):
+- TextInput en React Native para que el usuario escriba un ID.
+- Construcción dinámica de la URL: `${API_URL}/heroes/${id}`.
+- Manejo de respuestas 404 / no encontrado.
+
+EJERCICIO 10 (Likes con PATCH):
+- Método HTTP PATCH para modificar parcialmente un objeto existente.
+- Endpoint @Patch(':id/like') que incrementa el contador de likes en memoria.
+- Frontend actualiza la lista o el elemento tras el like.
+
+EJERCICIO 11 (Mini tienda con POST):
+- Envío de datos desde un formulario en React Native mediante POST.
+- En NestJS: @Post() con @Body() para recibir el cuerpo de la petición.
+- Actualización de la lista de productos agregando el nuevo elemento.
+
+EJERCICIO 12 (Creature Lab - Integración Completa):
+- Proyecto completo que une todo:
+  1. GET /criaturas (Carga inicial con useEffect y renderizado con FlatList).
+  2. GET /criaturas/:id (Búsqueda por ID con TextInput).
+  3. PATCH /criaturas/:id/like (Incremento de likes en vivo con botón en cada tarjeta).
+
+
+================================================================================
+6. ERRORES TIPICOS EN EXAMEN Y COMO RESOLVERLOS
+================================================================================
+
+1. ERROR: "Network request failed" o "TypeError: Failed to fetch"
+   - Causa 1: Olvidaste app.enableCors() en main.ts del backend.
+   - Causa 2: Pusiste "http://localhost:3000" en el frontend en vez de tu IP local.
+   - Causa 3: El backend no está corriendo (ejecuta npm run start:dev).
+   - Causa 4: Móvil y PC están en redes Wi-Fi diferentes.
+
+2. ERROR: El backend siempre devuelve undefined o no encuentra por ID
+   - Causa: @Param('id') id: string llega como TEXTO. Si tu array usa IDs numéricos (1, 2, 3), id === item.id dará false ('1' !== 1).
+   - Solución: Number(id) o parseInt(id).
+
+3. ERROR: Git no detecta archivos dentro de frontend o backend
+   - Causa: Se crearon carpetas .git dentro de las subcarpetas.
+   - Solución: En Git Bash ejecuta:
+     rm -rf backend/.git
+     rm -rf frontend/.git
+     git add .
+
+4. ERROR: FlatList no renderiza nada o da error de clave
+   - Causa: Falta keyExtractor o no devuelve un string.
+   - Solución: keyExtractor={(item) => item.id.toString()}
